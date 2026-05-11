@@ -9,14 +9,14 @@
 #include <TinyGPS++.h>
 
 // ===== LoRaWAN OTAA Credentials =====
-uint8_t devEui[] = {0x70, 0xB3, 0xD5, 0x7E, 0xD8, 0x00, 0x50, 0x1F};
-uint8_t appEui[] = {0xAA, 0x10, 0x01, 0x00, 0x00, 0x00, 0x10, 0x01};
-uint8_t appKey[] = {0x75, 0xFE, 0xD2, 0x73, 0x3B, 0x48, 0x09, 0xE3, 0x34, 0xE0, 0x17, 0x36, 0x1D, 0xD2, 0x3A, 0x10};
+uint8_t devEui[] = {0x70, 0xB3, 0xD5, 0x7E, 0xD8, 0x00, 0x41, 0x3D};
+uint8_t appEui[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+uint8_t appKey[] = {0xDE, 0x67, 0x90, 0x7C, 0x63, 0x5C, 0x79, 0x33, 0xA4, 0xD3, 0xC4, 0x4F, 0x12, 0x56, 0x0C, 0x50};
 
 /* ABP para*/
-uint8_t nwkSKey[] = {0xE0, 0x70, 0x80, 0x08, 0x70, 0xE5, 0x31, 0x94, 0x29, 0x75, 0xCA, 0xFB, 0x6E, 0x27, 0x95, 0xA9};
-uint8_t appSKey[] = {0xD1, 0x1D, 0x6D, 0xF4, 0x7A, 0x99, 0x51, 0xA9, 0xC0, 0xCB, 0xB5, 0x43, 0x37, 0xD2, 0x85, 0x63};
-uint32_t devAddr = (uint32_t)0x27FC8281;
+uint8_t nwkSKey[] = {0x69, 0x1D, 0xD6, 0x27, 0x44, 0x33, 0xEC, 0x69, 0x8F, 0xE2, 0xFD, 0xF9, 0x42, 0x51, 0x7E, 0xF4};
+uint8_t appSKey[] = {0xFD, 0xF8, 0x17, 0x47, 0x02, 0x45, 0xDF, 0xEB, 0xCF, 0x4F, 0x81, 0xD6, 0xEC, 0x23, 0x23, 0x58};
+uint32_t devAddr = (uint32_t)0x27FC5D83;
 
 // ===== LoRaWAN Settings =====
 LoRaMacRegion_t loraWanRegion = LORAMAC_REGION_AS923;  
@@ -26,7 +26,7 @@ bool loraWanAdr = true;
 bool isTxConfirmed = true;
 uint8_t appPort = 2;
 uint8_t confirmedNbTrials = 8;
-uint32_t appTxDutyCycle = 1 * 60 * 1000;
+uint32_t appTxDutyCycle = 1 * 60 * 1000; // Sleep amount, change the front number for minute, set 15 mins for deployment
 //uint32_t appTxDutyCycle = 15000;
 uint16_t userChannelsMask[6] = { 0x00FF, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000 };
 
@@ -49,6 +49,7 @@ double distance = 0;
 float temperatureBME = 0;
 float humidityBME = 0;
 float distanceVL = 0;
+float distanceLF = 0;
 uint16_t batteryVoltage = 0;
 double latitude = 0;
 double longitude = 0;
@@ -68,8 +69,8 @@ void prepareTxFrame(uint8_t port) {
 
   // VL53L1X
   unsigned long startTime = millis();
-    while (!vl53.dataReady()) {
-    if (millis() - startTime > 1000) {
+  while (!vl53.dataReady()) {
+    if (millis() - startTime > 5000) {
       Serial.println("VL53L1X Timeout.");
       break;
     }
@@ -89,6 +90,9 @@ void prepareTxFrame(uint8_t port) {
   } else {
     adjustedDistance = 500.0 - distance;
     distanceVL = adjustedDistance;
+    distanceLF = (distanceLF*.5) + (distanceVL*.5);
+
+    Serial.printf("Distance: %.2f, DistanceVL: %.2f, DistanceLF: %.2f\n", distance, distanceVL, distanceLF);
   }
   // BME280
   temperatureBME = bme.readTemperature();
@@ -126,6 +130,7 @@ void prepareTxFrame(uint8_t port) {
   int16_t temp = temperatureBME * 100;
   uint16_t humi = humidityBME * 100;
   int16_t dist = distanceVL;
+  int16_t distLF = distanceLF;
   uint16_t batt = batteryVoltage / 10;
   int32_t lat = latitude * 1e6;
   int32_t lon = longitude * 1e6;
@@ -142,24 +147,28 @@ void prepareTxFrame(uint8_t port) {
   appData[4] = (dist >> 8) & 0xFF;
   appData[5] = dist & 0xFF;
 
+  //distLF
+  appData[6] = (distLF >> 8) & 0xFF;
+  appData[7] = distLF & 0xFF;
+
   //batt
-  appData[6] = (batt >> 8) & 0xFF;
-  appData[7] = batt & 0xFF;
+  appData[8] = (batt >> 8) & 0xFF;
+  appData[9] = batt & 0xFF;
 
   //lat
-  appData[8]  = (lat >> 24) & 0xFF;
-  appData[9]  = (lat >> 16) & 0xFF;
-  appData[10] = (lat >> 8) & 0xFF;
-  appData[11] = lat & 0xFF;
+  appData[10]  = (lat >> 24) & 0xFF;
+  appData[11]  = (lat >> 16) & 0xFF;
+  appData[12] = (lat >> 8) & 0xFF;
+  appData[13] = lat & 0xFF;
 
   // lon
-  appData[12] = (lon >> 24) & 0xFF;
-  appData[13] = (lon >> 16) & 0xFF;
-  appData[14] = (lon >> 8) & 0xFF;
-  appData[15] = lon & 0xFF;
+  appData[14] = (lon >> 24) & 0xFF;
+  appData[15] = (lon >> 16) & 0xFF;
+  appData[16] = (lon >> 8) & 0xFF;
+  appData[17] = lon & 0xFF;
   Serial.println("Payload prepared for LoRaWAN:");
-  Serial.printf("Temp: %d, Humi: %d, Dist: %d, Batt: %d, Lat: %.6f, Lon: %.6f\n",
-              temp, humi, dist, batt,
+  Serial.printf("Temp: %d, Humi: %d, Dist: %d, DistLF: %d, Batt: %d, Lat: %.6f, Lon: %.6f\n",
+              temp, humi, dist, distLF, batt,
               latitude, longitude);
 }
 
